@@ -60,6 +60,5 @@ PostgreSQL with 7 tables (singular naming, `tableNameID` primary key convention)
 
 All API and database design documents are in the `/design` folder:
 
-- `database_design.docx` — Technology choice, ERD, table specifications with application context
-- `service_layer.docx` — All REST endpoints with sample requests, responses, and error cases
-- `erd.png` — Entity relationship diagram (PostgreSQL, crow's-foot notation)
+- `database_design.pdf` — Technology choice, ERD, table specifications with application context
+- `service_layer.pdf` — All REST endpoints with sample requests, responses, and error cases
