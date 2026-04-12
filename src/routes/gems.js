@@ -214,4 +214,55 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// PATCH /gems/:id
+router.patch('/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { userID } = req.user;
+  const { name, description, category, location_label, privacy, tags } = req.body;
+
+  try {
+    const existing = await pool.query(
+      `SELECT "userID" FROM gem WHERE "gemID" = $1`, [id]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Gem not found.' } });
+    }
+
+    if (existing.rows[0].userID !== userID) {
+      return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not your gem.' } });
+    }
+
+    const result = await pool.query(`
+      UPDATE gem SET
+        name           = COALESCE($1, name),
+        description    = COALESCE($2, description),
+        category       = COALESCE($3, category),
+        location_label = COALESCE($4, location_label),
+        privacy        = COALESCE($5, privacy)
+      WHERE "gemID" = $6
+      RETURNING "gemID", name, description, category, location_label, privacy
+    `, [name, description, category, location_label, privacy, id]);
+
+    // Replace tags if provided
+    if (tags) {
+      await pool.query(`DELETE FROM tag WHERE "gemID" = $1`, [id]);
+      for (const tag of tags) {
+        if (tag.trim()) {
+          await pool.query(
+            `INSERT INTO tag ("gemID", name) VALUES ($1, $2)`,
+            [id, tag.trim().toLowerCase()]
+          );
+        }
+      }
+    }
+
+    res.json(result.rows[0]);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Something went wrong.' } });
+  }
+});
+
 module.exports = router;
