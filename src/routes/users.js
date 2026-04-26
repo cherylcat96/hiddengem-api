@@ -64,6 +64,17 @@ router.patch('/me', authenticateToken, async (req, res) => {
 // GET /users/:username
 router.get('/:username', async (req, res) => {
   const { username } = req.params;
+  const authHeader = req.headers['authorization'];
+  let viewerID = null;
+
+  // Optionally decode token if present (don't require it)
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+      viewerID = decoded.userID;
+    } catch (_) {}
+  }
 
   try {
     const result = await pool.query(
@@ -80,14 +91,27 @@ router.get('/:username', async (req, res) => {
 
     const user = result.rows[0];
 
-    const gemCount = await pool.query(
-      `SELECT COUNT(*) FROM gem WHERE "userID" = $1 AND is_flagged = FALSE`,
-      [user.userID]
-    );
+    const [gemCount, followerCount, followingCount] = await Promise.all([
+      pool.query(`SELECT COUNT(*) FROM gem WHERE "userID" = $1 AND is_flagged = FALSE`, [user.userID]),
+      pool.query(`SELECT COUNT(*) FROM follow WHERE "followingID" = $1`, [user.userID]),
+      pool.query(`SELECT COUNT(*) FROM follow WHERE "followerID" = $1`, [user.userID]),
+    ]);
+
+    let is_following = false;
+    if (viewerID && viewerID !== user.userID) {
+      const followCheck = await pool.query(
+        `SELECT 1 FROM follow WHERE "followerID" = $1 AND "followingID" = $2`,
+        [viewerID, user.userID]
+      );
+      is_following = followCheck.rows.length > 0;
+    }
 
     res.json({
       ...user,
       gem_count: Number(gemCount.rows[0].count),
+      follower_count: Number(followerCount.rows[0].count),
+      following_count: Number(followingCount.rows[0].count),
+      is_following,
     });
 
   } catch (err) {
@@ -129,6 +153,126 @@ router.get('/:username/gems', async (req, res) => {
     `, [userID, limit, offset]);
 
     res.json({ gems: result.rows });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Something went wrong.' } });
+  }
+});
+
+// POST /users/:username/follow
+router.post('/:username/follow', authenticateToken, async (req, res) => {
+  const { userID: followerID } = req.user;
+  const { username } = req.params;
+
+  try {
+    const target = await pool.query(
+      `SELECT "userID" FROM "user" WHERE username = $1`, [username]
+    );
+
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    }
+
+    const followingID = target.rows[0].userID;
+
+    if (followerID === followingID) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'You cannot follow yourself.' } });
+    }
+
+    await pool.query(
+      `INSERT INTO follow ("followerID", "followingID") VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [followerID, followingID]
+    );
+
+    res.status(201).json({ message: 'Followed successfully.' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Something went wrong.' } });
+  }
+});
+
+// DELETE /users/:username/follow
+router.delete('/:username/follow', authenticateToken, async (req, res) => {
+  const { userID: followerID } = req.user;
+  const { username } = req.params;
+
+  try {
+    const target = await pool.query(
+      `SELECT "userID" FROM "user" WHERE username = $1`, [username]
+    );
+
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    }
+
+    const followingID = target.rows[0].userID;
+
+    await pool.query(
+      `DELETE FROM follow WHERE "followerID" = $1 AND "followingID" = $2`,
+      [followerID, followingID]
+    );
+
+    res.json({ message: 'Unfollowed successfully.' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Something went wrong.' } });
+  }
+});
+
+// GET /users/:username/followers
+router.get('/:username/followers', async (req, res) => {
+  const { username } = req.params;
+
+  try {
+    const target = await pool.query(
+      `SELECT "userID" FROM "user" WHERE username = $1`, [username]
+    );
+
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    }
+
+    const result = await pool.query(`
+      SELECT u."userID", u.username, u.display_name, u.avatar_url
+      FROM follow f
+      JOIN "user" u ON u."userID" = f."followerID"
+      WHERE f."followingID" = $1
+      ORDER BY f.created_at DESC
+    `, [target.rows[0].userID]);
+
+    res.json({ users: result.rows });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Something went wrong.' } });
+  }
+});
+
+// GET /users/:username/following
+router.get('/:username/following', async (req, res) => {
+  const { username } = req.params;
+
+  try {
+    const target = await pool.query(
+      `SELECT "userID" FROM "user" WHERE username = $1`, [username]
+    );
+
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    }
+
+    const result = await pool.query(`
+      SELECT u."userID", u.username, u.display_name, u.avatar_url
+      FROM follow f
+      JOIN "user" u ON u."userID" = f."followingID"
+      WHERE f."followerID" = $1
+      ORDER BY f.created_at DESC
+    `, [target.rows[0].userID]);
+
+    res.json({ users: result.rows });
 
   } catch (err) {
     console.error(err);
