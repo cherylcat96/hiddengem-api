@@ -149,7 +149,6 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 
   try {
-    // Insert gem
     const gemResult = await pool.query(`
       INSERT INTO gem ("userID", name, description, category, latitude, longitude, location_label, privacy)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -159,7 +158,6 @@ router.post('/', authenticateToken, async (req, res) => {
     const gem = gemResult.rows[0];
     const gemID = gem.gemID;
 
-    // Insert tags
     for (const tag of tags) {
       if (tag.trim()) {
         await pool.query(
@@ -169,7 +167,6 @@ router.post('/', authenticateToken, async (req, res) => {
       }
     }
 
-    // Insert photos
     for (let i = 0; i < photos.length; i++) {
       await pool.query(
         `INSERT INTO photo ("gemID", url, display_order) VALUES ($1, $2, $3)`,
@@ -218,7 +215,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 router.patch('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { userID } = req.user;
-  const { name, description, category, location_label, privacy, tags } = req.body;
+  const { name, description, category, location_label, privacy, tags, photos } = req.body;
 
   try {
     const existing = await pool.query(
@@ -254,6 +251,17 @@ router.patch('/:id', authenticateToken, async (req, res) => {
             [id, tag.trim().toLowerCase()]
           );
         }
+      }
+    }
+
+    // Replace photos if provided
+    if (photos) {
+      await pool.query(`DELETE FROM photo WHERE "gemID" = $1`, [id]);
+      for (let i = 0; i < photos.length; i++) {
+        await pool.query(
+          `INSERT INTO photo ("gemID", url, display_order) VALUES ($1, $2, $3)`,
+          [id, photos[i].url, i]
+        );
       }
     }
 
