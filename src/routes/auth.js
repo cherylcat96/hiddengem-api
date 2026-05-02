@@ -147,18 +147,18 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    if (!user.is_verified) {
-  return res.status(403).json({
-    error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in. Check your inbox for the verification link.' }
-  });
-}
-
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
 
     if (!valid) {
       return res.status(401).json({
         error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' }
+      });
+    }
+
+    if (!user.is_verified) {
+      return res.status(403).json({
+        error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in. Check your inbox for the verification link.' }
       });
     }
 
