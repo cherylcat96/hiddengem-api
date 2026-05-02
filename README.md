@@ -1,64 +1,127 @@
-# HiddenGem — API Service
+# HiddenGem — API
 
-REST API and database layer for the HiddenGem community location-sharing platform.
+Node.js/Express REST API for HiddenGem, a community-powered app for discovering and sharing hidden local spots.
 
-## What is HiddenGem?
+**Live API:** https://hiddengem-api-production.up.railway.app
 
-HiddenGem lets real people share the places that most people never find — a hidden waterfall trail, a rooftop garden, a decades-old café known only to locals. Users submit locations with photos and descriptions, and others discover them through an interactive map and card feed.
+---
 
-## What this repo is
+## Tech Stack
 
-This is the **Node.js/Express API** for HiddenGem. It sits between the React frontend and the PostgreSQL database and is the only process that reads from or writes to the database.
-
-**Tech stack:**
-- Node.js + Express
-- PostgreSQL (hosted on Railway)
-- Cloudinary — photo storage and CDN
-- SendGrid — transactional email (verification)
-- JWT — authentication
+- Node.js / Express
+- PostgreSQL (via pg)
+- JWT authentication
+- Bcrypt password hashing
+- Cloudinary (photo storage)
+- SendGrid (email verification)
 - Deployed on Railway
 
-## How it fits into the overall application
+---
+
+## Database Schema
+
+7 tables: user, gem, photo, tag, comment, save, follow
+
+Primary key convention: tableNameID (e.g. userID, gemID)
+
+---
+
+## API Endpoints
+
+### Auth
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /auth/register | Register a new user |
+| POST | /auth/login | Sign in, returns JWT |
+| GET | /auth/verify-email?token= | Verify email address |
+
+### Gems
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /gems | List gems (filter by category, tag, sort) |
+| GET | /gems/:id | Get gem detail |
+| POST | /gems | Create gem (auth required) |
+| PATCH | /gems/:id | Update gem (owner only) |
+| DELETE | /gems/:id | Delete gem (owner only) |
+| POST | /gems/:id/flag | Flag a gem (auth required) |
+
+### Comments
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /gems/:id/comments | Get comments for a gem |
+| POST | /gems/:id/comments | Post a comment (auth required) |
+
+### Saves
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /gems/:id/saves | Save a gem (auth required) |
+| DELETE | /gems/:id/saves | Unsave a gem (auth required) |
+| GET | /users/me/saves | Get current user's saved gems |
+
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /users/:username | Get user profile |
+| PATCH | /users/me | Update own profile (auth required) |
+| GET | /users/:username/gems | Get gems by user |
+| GET | /users/:username/followers | Get follower list |
+| GET | /users/:username/following | Get following list |
+| POST | /users/:username/follow | Follow a user (auth required) |
+| DELETE | /users/:username/follow | Unfollow a user (auth required) |
+
+---
+
+## Authentication
+
+Protected routes require a JWT in the Authorization header:
 
 ```
-[ hiddengem-ui: React ]  →  REST/JSON  →  [ This repo: Express API ]  →  [ PostgreSQL ]
-                                                                       →  [ Cloudinary ]
-                                                                       →  [ SendGrid ]
+Authorization: Bearer <token>
 ```
 
-## API base URL
+Tokens are issued on login and registration. All accounts must verify their email before signing in.
+
+---
+
+## Local Development
+
+```bash
+git clone https://github.com/cherylcat96/hiddengem-api
+cd hiddengem-api
+npm install
+cp .env.example .env
+npm start
+```
+
+Runs on http://localhost:3001
+
+### Environment Variables
 
 ```
-https://api.hiddengem.app/v1
+DATABASE_URL=postgresql_connection_string
+JWT_SECRET=jwt_secret
+CLOUDINARY_CLOUD_NAME=cloudinary_cloud_name
+CLOUDINARY_API_KEY=cloudinary_api_key
+CLOUDINARY_API_SECRET=cloudinary_api_secret
+SENDGRID_API_KEY=sendgrid_api_key
+SENDGRID_FROM_EMAIL=verified_sender_email
 ```
 
-All endpoints accept and return JSON. Authentication is JWT via `Authorization: Bearer <token>`.
+---
 
-## Endpoint groups (MVP)
+## Known Limitations
 
-| Group | Endpoints |
-|-------|-----------|
-| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/verify-email`, `POST /auth/resend-verification` |
-| Users | `GET /users/:username`, `PATCH /users/me` |
-| Gems | `GET /gems`, `GET /gems/:id`, `POST /gems`, `PATCH /gems/:id`, `DELETE /gems/:id`, `POST /gems/:id/flag` |
-| Photos | `POST /uploads/photo` |
-| Comments | `GET /gems/:id/comments`, `POST /gems/:id/comments` |
-| Saves | `POST /gems/:id/saves`, `DELETE /gems/:id/saves`, `GET /users/me/saves` |
-| User gems | `GET /users/:username/gems` |
+- **Moderation** — POST /gems/:id/flag sets is_flagged = true in the database and flagged gems are excluded from all public queries. A moderation admin UI is not implemented and is scoped as a future feature.
+- **Community page** — The follow/unfollow social graph is fully implemented. A dedicated /community browse page is scoped as a future feature.
 
-## Stretch feature
+---
 
-**Follow / Unfollow social graph** — `POST/DELETE /users/:username/follows`, `GET /users/:username/followers`, `GET /users/:username/following`, `GET /gems?feed=following`. Implemented after MVP is complete.
+## Related
 
-## Database
-
-PostgreSQL with 7 tables (singular naming, `tableNameID` primary key convention):
-
-`user` · `gem` · `photo` · `tag` · `comment` · `save` · `follow`
-
-## Design documents
-
-All API and database design documents are in the `/design` folder:
-
-- `database_design.pdf` — Technology choice, ERD, table specifications with application context
-- `service_layer.pdf` — All REST endpoints with sample requests, responses, and error cases
+- Frontend Repository: https://github.com/cherylcat96/hiddengem-ui
+- Live App: https://hiddengem-ui.vercel.app
